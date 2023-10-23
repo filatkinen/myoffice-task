@@ -15,6 +15,7 @@ import (
 var (
 	maxThreads int
 	fileURL    string
+	userAgent  string
 )
 
 func main() {
@@ -25,6 +26,7 @@ func main() {
 	}
 	flag.IntVar(&maxThreads, "m", 1000, "max threads run simultaneously")
 	flag.StringVar(&fileURL, "f", "", "file name with URL")
+	flag.StringVar(&fileURL, "u", "Go-http-client/1.1", "userAgent string")
 	flag.Parse()
 
 	if len(os.Args) == 1 || fileURL == "" {
@@ -43,7 +45,11 @@ func main() {
 		}
 	}()
 
-	query := urlquery.New(inFile)
+	query, err := urlquery.New(inFile, maxThreads, userAgent)
+	if err != nil {
+		log.Printf("got error creating urlquery:%s", err)
+		return
+	}
 
 	sigTerm := make(chan os.Signal, 1)
 	signal.Notify(sigTerm, syscall.SIGINT, syscall.SIGTERM)
@@ -71,7 +77,7 @@ func main() {
 
 	wg.Wait()
 
-	log.Println("Time to take:", time.Since(timeStart))
+	log.Println("Time to take:", time.Since(timeStart).Truncate(time.Millisecond))
 
 	fmt.Println("\nResults of URL processing:")
 	fmt.Println(query)
