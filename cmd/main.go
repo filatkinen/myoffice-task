@@ -37,6 +37,11 @@ func main() {
 	if err != nil {
 		log.Fatal("Error opening file:", err)
 	}
+	defer func() {
+		if err = inFile.Close(); err != nil {
+			log.Printf("Error closing file %v:", err)
+		}
+	}()
 
 	query := urlquery.New(inFile)
 
