@@ -1,8 +1,7 @@
-package urlquery
+package urlquery_test
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"io"
 	"math/rand"
 	"net"
@@ -12,6 +11,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/filatkinen/myoffice-task/internal/urlquery"
+	"github.com/stretchr/testify/require"
 )
 
 const maxSlice = 10000
@@ -22,24 +24,23 @@ var (
 )
 
 func TestUrlQuery(t *testing.T) {
-
 	t.Run("10 url, 4 threads,  output os.Stdout", func(t *testing.T) {
-		testUrlQuery(t, 10, 4, os.Stdout)
+		testURLQuery(t, 10, 4, os.Stdout)
 	})
 	t.Run("10k url, 100 threads, output discarded", func(t *testing.T) {
-		testUrlQuery(t, 10*1000, 100, io.Discard)
+		testURLQuery(t, 10*1000, 100, io.Discard)
 	})
 	t.Run("100k url, 10k threads, output discarded", func(t *testing.T) {
-		testUrlQuery(t, 100*1000, 10*1000, io.Discard)
+		testURLQuery(t, 100*1000, 10*1000, io.Discard)
 	})
 }
 
-func testUrlQuery(t *testing.T, maxURL int, maxThreads int, output io.Writer) {
-	var src = rand.NewSource(time.Now().UnixNano())
-	var rnd = rand.New(src)
+func testURLQuery(t *testing.T, maxURL int, maxThreads int, output io.Writer) {
+	src := rand.NewSource(time.Now().UnixNano())
+	rnd := rand.New(src) //nolint:gosec
 	b := make([]byte, maxSlice)
 
-	hs := http.Server{Addr: net.JoinHostPort(host, port)}
+	hs := http.Server{Addr: net.JoinHostPort(host, port), ReadHeaderTimeout: time.Second * 3}
 	hs.Handler = http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			size := rnd.Intn(maxSlice)
@@ -70,7 +71,7 @@ func testUrlQuery(t *testing.T, maxURL int, maxThreads int, output io.Writer) {
 
 	urlGen := newURLGenerator("http://"+host+":"+port, maxURL)
 
-	urlQuery, err := New(&urlGen, output, maxThreads, "testing agent:))")
+	urlQuery, err := urlquery.New(&urlGen, output, maxThreads, "testing agent:))")
 	require.NoError(t, err)
 
 	urlQuery.Start()
@@ -82,14 +83,10 @@ func testUrlQuery(t *testing.T, maxURL int, maxThreads int, output io.Writer) {
 
 	fmt.Println("Results:")
 	fmt.Println(urlQuery)
-
 }
 
 func randomBool(rnd *rand.Rand) bool {
-	if rnd.Intn(2) == 1 {
-		return true
-	}
-	return false
+	return rnd.Intn(2) == 1
 }
 
 type urlGenerator struct {

@@ -2,6 +2,7 @@ package urlquery
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -19,7 +20,7 @@ const (
 	ConnectTimeOut    = time.Second * 5
 )
 
-type UrlQuery struct {
+type URLQuery struct {
 	results map[string]int
 
 	reader io.Reader
@@ -38,7 +39,7 @@ type UrlQuery struct {
 	transport *http.Transport
 }
 
-func New(in io.Reader, out io.Writer, maxThreads int, userAgent string) (*UrlQuery, error) {
+func New(in io.Reader, out io.Writer, maxThreads int, userAgent string) (*URLQuery, error) {
 	defaultRoundTripper := http.DefaultTransport
 	defaultTransportPointer, ok := defaultRoundTripper.(*http.Transport)
 	if !ok {
@@ -49,7 +50,7 @@ func New(in io.Reader, out io.Writer, maxThreads int, userAgent string) (*UrlQue
 	defaultTransport.MaxIdleConnsPerHost = 100
 	defaultTransport.DisableCompression = true
 
-	return &UrlQuery{
+	return &URLQuery{
 		results:    make(map[string]int),
 		reader:     in,
 		writer:     out,
@@ -62,7 +63,7 @@ func New(in io.Reader, out io.Writer, maxThreads int, userAgent string) (*UrlQue
 	}, nil
 }
 
-func (u *UrlQuery) Start() {
+func (u *URLQuery) Start() {
 	go func() {
 		u.countWorker()
 	}()
@@ -92,11 +93,11 @@ func (u *UrlQuery) Start() {
 	close(u.countChan)
 }
 
-func (u *UrlQuery) Stop() {
+func (u *URLQuery) Stop() {
 	close(u.exitChan)
 }
 
-func (u *UrlQuery) jobWorker() {
+func (u *URLQuery) jobWorker() {
 	ticker := time.NewTicker(WorkerIdleTimeout)
 	defer ticker.Stop()
 
@@ -116,7 +117,7 @@ func (u *UrlQuery) jobWorker() {
 	}
 }
 
-func (u *UrlQuery) countWorker() {
+func (u *URLQuery) countWorker() {
 	for {
 		result, ok := <-u.countChan
 		if !ok {
@@ -126,7 +127,7 @@ func (u *UrlQuery) countWorker() {
 	}
 }
 
-func (u *UrlQuery) queryURL(uRL string) {
+func (u *URLQuery) queryURL(uRL string) {
 	timeStart := time.Now()
 	client := &http.Client{
 		Transport: u.transport,
@@ -134,7 +135,7 @@ func (u *UrlQuery) queryURL(uRL string) {
 	}
 
 	// trying to use HEAD method
-	req, err := http.NewRequest("HEAD", uRL, nil)
+	req, err := http.NewRequestWithContext(context.Background(), "HEAD", uRL, nil)
 	if err != nil {
 		u.countChan <- "Error creating query URL"
 		u.logging(fmt.Sprintf("Error preparing quering URL:%s (error=%v)", uRL, err))
@@ -163,7 +164,7 @@ func (u *UrlQuery) queryURL(uRL string) {
 	}
 
 	// got  ContentLength==-1 so, using GET method
-	req, err = http.NewRequest("GET", uRL, nil)
+	req, err = http.NewRequestWithContext(context.Background(), "GET", uRL, nil)
 	if err != nil {
 		u.countChan <- "Error creating query URL"
 		u.logging(fmt.Sprintf("Error preparing quering URL:%s (error=%v)", uRL, err))
@@ -211,7 +212,7 @@ func (u *UrlQuery) queryURL(uRL string) {
 		uRL, len(body), time.Since(timeStart).Truncate(time.Millisecond)))
 }
 
-func (u *UrlQuery) checkQuantityWorkers() {
+func (u *URLQuery) checkQuantityWorkers() {
 	u.lock.Lock()
 	if u.curThreads < u.maxThreads {
 		u.wg.Add(1)
@@ -224,7 +225,7 @@ func (u *UrlQuery) checkQuantityWorkers() {
 	u.lock.Unlock()
 }
 
-func (u *UrlQuery) String() string {
+func (u *URLQuery) String() string {
 	sb := strings.Builder{}
 	for k, v := range u.results {
 		sb.WriteString(fmt.Sprintf("Status:\"%s\", count:%d\n", k, v))
@@ -232,10 +233,9 @@ func (u *UrlQuery) String() string {
 	return sb.String()
 }
 
-func (u *UrlQuery) logging(msg string) {
+func (u *URLQuery) logging(msg string) {
 	_, err := fmt.Fprintln(u.writer, msg)
 	if err != nil {
 		log.Printf("error wtiting log\n, %s", err)
 	}
-
 }

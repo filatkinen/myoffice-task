@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/filatkinen/myoffice-task/internal/urlquery"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/filatkinen/myoffice-task/internal/urlquery"
 )
 
 var (
