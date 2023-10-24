@@ -12,7 +12,8 @@ func main() {
 
 	client := &http.Client{}
 
-	req, err := http.NewRequest("HEAD", "http://ya.ru", nil)
+	req, err := http.NewRequest("HEAD", "http://localhost:8089", nil)
+	//req, err := http.NewRequest("HEAD", "http://google.com", nil)
 	if err != nil {
 		log.Fatalln(err)
 	}

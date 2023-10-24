@@ -45,7 +45,7 @@ func main() {
 		}
 	}()
 
-	query, err := urlquery.New(inFile, maxThreads, userAgent)
+	query, err := urlquery.New(inFile, os.Stdout, maxThreads, userAgent)
 	if err != nil {
 		log.Printf("got error creating urlquery:%s", err)
 		return

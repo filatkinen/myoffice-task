@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -12,29 +13,32 @@ import (
 	"time"
 )
 
-const WorkerIdleTimeout = time.Second * 5
-const MaxSizeObject = 10 * 1024 * 1024
+const (
+	WorkerIdleTimeout = time.Second * 5
+	MaxSizeObject     = 10 * 1024 * 1024
+	ConnectTimeOut    = time.Second * 5
+)
 
 type UrlQuery struct {
 	results map[string]int
 
 	reader io.Reader
+	writer io.Writer
 
 	maxThreads int
 	curThreads int
+	userAgent  string
 
-	exitChan   chan struct{}
-	finishChan chan struct{}
-	countChan  chan string
-	workChan   chan string
-	wg         sync.WaitGroup
-	lock       sync.Mutex
+	exitChan  chan struct{}
+	countChan chan string
+	taskChan  chan string
+	wg        sync.WaitGroup
 
+	lock      sync.Mutex
 	transport *http.Transport
-	userAgent string
 }
 
-func New(in io.Reader, maxThreads int, userAgent string) (*UrlQuery, error) {
+func New(in io.Reader, out io.Writer, maxThreads int, userAgent string) (*UrlQuery, error) {
 	defaultRoundTripper := http.DefaultTransport
 	defaultTransportPointer, ok := defaultRoundTripper.(*http.Transport)
 	if !ok {
@@ -48,20 +52,18 @@ func New(in io.Reader, maxThreads int, userAgent string) (*UrlQuery, error) {
 	return &UrlQuery{
 		results:    make(map[string]int),
 		reader:     in,
+		writer:     out,
 		maxThreads: maxThreads,
 		exitChan:   make(chan struct{}),
-		finishChan: make(chan struct{}),
 		countChan:  make(chan string),
-		workChan:   make(chan string),
+		taskChan:   make(chan string),
 		transport:  defaultTransport,
 		userAgent:  userAgent,
 	}, nil
 }
 
 func (u *UrlQuery) Start() {
-	u.wg.Add(1)
 	go func() {
-		defer u.wg.Done()
 		u.countWorker()
 	}()
 
@@ -76,17 +78,18 @@ func (u *UrlQuery) Start() {
 			uRL := scanner.Text()
 			_, err := url.ParseRequestURI(uRL)
 			if err != nil {
-				u.countChan <- err.Error()
+				u.countChan <- "Error parsing URL"
 				u.logging(fmt.Sprintf("Error parsing URL:%s", uRL))
 				continue
 			}
 			u.checkQuantityWorkers()
-			u.workChan <- uRL
+			u.taskChan <- uRL
 		}
 	}
 
-	close(u.finishChan)
+	close(u.taskChan)
 	u.wg.Wait()
+	close(u.countChan)
 }
 
 func (u *UrlQuery) Stop() {
@@ -99,14 +102,15 @@ func (u *UrlQuery) jobWorker() {
 
 	for {
 		select {
-		case uRL := <-u.workChan:
+		case uRL, ok := <-u.taskChan:
+			if !ok {
+				return
+			}
 			u.queryURL(uRL)
 		case <-ticker.C:
 			u.lock.Lock()
 			u.curThreads--
 			u.lock.Unlock()
-			return
-		case <-u.finishChan:
 			return
 		}
 	}
@@ -114,23 +118,25 @@ func (u *UrlQuery) jobWorker() {
 
 func (u *UrlQuery) countWorker() {
 	for {
-		select {
-		case <-u.finishChan:
+		result, ok := <-u.countChan
+		if !ok {
 			return
-		case result := <-u.countChan:
-			u.results[result]++
 		}
+		u.results[result]++
 	}
 }
 
 func (u *UrlQuery) queryURL(uRL string) {
 	timeStart := time.Now()
-	client := &http.Client{Transport: u.transport}
+	client := &http.Client{
+		Transport: u.transport,
+		Timeout:   ConnectTimeOut,
+	}
 
 	// trying to use HEAD method
 	req, err := http.NewRequest("HEAD", uRL, nil)
 	if err != nil {
-		u.countChan <- err.Error()
+		u.countChan <- "Error creating query URL"
 		u.logging(fmt.Sprintf("Error preparing quering URL:%s (error=%v)", uRL, err))
 		return
 	}
@@ -138,7 +144,7 @@ func (u *UrlQuery) queryURL(uRL string) {
 
 	respHEAD, err := client.Do(req)
 	if err != nil {
-		u.countChan <- err.Error()
+		u.countChan <- "Error querying URL"
 		u.logging(fmt.Sprintf("Error quering URL:%s (error=%v)", uRL, err))
 		return
 	}
@@ -159,7 +165,7 @@ func (u *UrlQuery) queryURL(uRL string) {
 	// got  ContentLength==-1 so, using GET method
 	req, err = http.NewRequest("GET", uRL, nil)
 	if err != nil {
-		u.countChan <- err.Error()
+		u.countChan <- "Error creating query URL"
 		u.logging(fmt.Sprintf("Error preparing quering URL:%s (error=%v)", uRL, err))
 		return
 	}
@@ -167,7 +173,7 @@ func (u *UrlQuery) queryURL(uRL string) {
 
 	respGET, err := client.Do(req)
 	if err != nil {
-		u.countChan <- err.Error()
+		u.countChan <- "Error querying URL"
 		u.logging(fmt.Sprintf("Error quering URL:%s (error=%v)", uRL, err))
 		return
 	}
@@ -188,7 +194,7 @@ func (u *UrlQuery) queryURL(uRL string) {
 	limitReader := io.LimitReader(respGET.Body, MaxSizeObject+1)
 	body, err := io.ReadAll(limitReader)
 	if err != nil {
-		u.countChan <- err.Error()
+		u.countChan <- "Error reading body"
 		u.logging(fmt.Sprintf("Error reading body URL:%s (error=%v)", uRL, err))
 		return
 	}
@@ -202,7 +208,7 @@ func (u *UrlQuery) queryURL(uRL string) {
 
 	u.countChan <- respGET.Status
 	u.logging(fmt.Sprintf("Result of quering(GET) URL:%s, size(byte)=%d , time query=%s",
-		uRL, respGET.ContentLength, time.Since(timeStart).Truncate(time.Millisecond)))
+		uRL, len(body), time.Since(timeStart).Truncate(time.Millisecond)))
 }
 
 func (u *UrlQuery) checkQuantityWorkers() {
@@ -221,12 +227,15 @@ func (u *UrlQuery) checkQuantityWorkers() {
 func (u *UrlQuery) String() string {
 	sb := strings.Builder{}
 	for k, v := range u.results {
-		sb.WriteString(fmt.Sprintf("Status code:%s, count:%d\n", k, v))
+		sb.WriteString(fmt.Sprintf("Status:\"%s\", count:%d\n", k, v))
 	}
 	return sb.String()
 }
 
 func (u *UrlQuery) logging(msg string) {
-	fmt.Println(msg)
+	_, err := fmt.Fprintln(u.writer, msg)
+	if err != nil {
+		log.Printf("error wtiting log\n, %s", err)
+	}
 
 }

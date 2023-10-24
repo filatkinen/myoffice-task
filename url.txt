@@ -1,4 +1,5 @@
-https://www.google.com/
-https://github.com/IBM/sarama
-https://myoffice.ru
-https://yandex.ru
+http://localhost:8089
+http://localhost:8089
+http://localhost:8089
+http://localhost:8089
+http://localhost:8089
