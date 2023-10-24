@@ -1,5 +1,6 @@
-http://localhost:8089
-http://localhost:8089
-http://localhost:8089
-http://localhost:8089
-http://localhost:8089
+https://www.google.com/
+https://github.com/IBM/sarama
+https://myoffice.ru
+https://yandex.ru
+https://www.zenrows.com/blog/web-scraping-golang
+https://hub.docker.com/r/bitnami/kafka
