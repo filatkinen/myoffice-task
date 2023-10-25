@@ -1,0 +1,12 @@
+version: '3'
+
+services:
+
+  urlcli:
+    build:
+      context: ../
+      dockerfile: ./deployment/Dockerfile
+    container_name: urlcli
+    restart: always
+    tty: true
+    stdin_open: true

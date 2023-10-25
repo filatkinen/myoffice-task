@@ -33,7 +33,8 @@ type URLQuery struct {
 	exitChan  chan struct{}
 	countChan chan string
 	taskChan  chan string
-	wg        sync.WaitGroup
+	wgWokers  sync.WaitGroup
+	wgCount   sync.WaitGroup
 
 	lock      sync.Mutex
 	transport *http.Transport
@@ -64,7 +65,9 @@ func New(in io.Reader, out io.Writer, maxThreads int, userAgent string) (*URLQue
 }
 
 func (u *URLQuery) Start() {
+	u.wgCount.Add(1)
 	go func() {
+		defer u.wgCount.Done()
 		u.countWorker()
 	}()
 
@@ -89,8 +92,10 @@ func (u *URLQuery) Start() {
 	}
 
 	close(u.taskChan)
-	u.wg.Wait()
+	u.wgWokers.Wait()
+
 	close(u.countChan)
+	u.wgCount.Wait()
 }
 
 func (u *URLQuery) Stop() {
@@ -215,9 +220,9 @@ func (u *URLQuery) queryURL(uRL string) {
 func (u *URLQuery) checkQuantityWorkers() {
 	u.lock.Lock()
 	if u.curThreads < u.maxThreads {
-		u.wg.Add(1)
+		u.wgWokers.Add(1)
 		go func() {
-			defer u.wg.Done()
+			defer u.wgWokers.Done()
 			u.jobWorker()
 		}()
 		u.curThreads++

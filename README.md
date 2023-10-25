@@ -34,7 +34,7 @@ make test
 
  - Запуск:
 ```
-make run file=FilenameWithPath 
+make run FILE=FilenameWithPath 
 ```
 
 ### 2. Запуск в докере 
@@ -46,13 +46,13 @@ make docker-test
 
  - Запуск:
 ```
-make docker-run file=FilenameWithPath 
+make docker-run FILE=FilenameWithPath 
 ```
 
 
  - Очистка после докера :
 ```
-make docker-clean  
+make down  
 ```
 
 

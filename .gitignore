@@ -31,6 +31,7 @@ postgres03
 p.csv
 people.csv
 bin/
+build/
 .env
 *.env
 !deployment/*.env

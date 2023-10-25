@@ -21,6 +21,7 @@ const maxSlice = 10000
 var (
 	host = "localhost"
 	port = "8089"
+	lock = sync.Mutex{}
 )
 
 func TestUrlQuery(t *testing.T) {
@@ -43,17 +44,21 @@ func testURLQuery(t *testing.T, maxURL int, maxThreads int, output io.Writer) {
 	hs := http.Server{Addr: net.JoinHostPort(host, port), ReadHeaderTimeout: time.Second * 3}
 	hs.Handler = http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
+			lock.Lock()
 			size := rnd.Intn(maxSlice)
+			headOrGet := rnd.Intn(2) == 1
+			delay := rnd.Intn(30)
+			lock.Unlock()
 			switch r.Method {
 			case http.MethodHead:
-				if randomBool(rnd) {
+				if headOrGet {
 					w.Header().Set("Content-Length", strconv.Itoa(size))
 				}
 				// empty Content-Length header, so next time CLI will come using method GET
-				time.Sleep(time.Millisecond * time.Duration(rnd.Intn(30)))
+				time.Sleep(time.Millisecond * time.Duration(delay))
 				w.WriteHeader(http.StatusOK)
 			case http.MethodGet:
-				time.Sleep(time.Millisecond * time.Duration(rnd.Intn(30)+30))
+				time.Sleep(time.Millisecond*time.Duration(delay) + 30)
 				w.Write(b[:size])
 			}
 		})
@@ -83,10 +88,6 @@ func testURLQuery(t *testing.T, maxURL int, maxThreads int, output io.Writer) {
 
 	fmt.Println("Results:")
 	fmt.Println(urlQuery)
-}
-
-func randomBool(rnd *rand.Rand) bool {
-	return rnd.Intn(2) == 1
 }
 
 type urlGenerator struct {
